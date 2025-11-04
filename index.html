@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>College Complaint Management System</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <!-- Navigation Bar -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="index.html">
+                <i class="fas fa-university"></i> College Complaint Management System
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="student-login.html">Student Login</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="admin-login.html">Admin Login</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero-section">
+        <div class="container text-center py-5">
+            <!-- College Logo -->
+            <div class="college-logo mb-4">
+                <img src="https://media.uem.edu.in/uploads/sites/3/2016/03/UEM-Logo-1.png" alt="College Logo" class="img-fluid" style="max-height: 150px;">
+            </div>
+            
+            <!-- College Name and Description -->
+            <h1 class="display-4 fw-bold mb-4">University of Engineering & Management, Jaipur</h1>
+            <p class="lead mb-5">Welcome to the University of Engineering & Management, Jaipur. We are dedicated to providing quality education and fostering a supportive learning environment.</p>
+            
+            <div class="row justify-content-center">
+                <div class="col-md-5 mb-4">
+                    <div class="card h-100 shadow-sm">
+                        <div class="card-body d-flex flex-column">
+                            <h5 class="card-title"><i class="fas fa-user-graduate text-primary"></i> Student Portal</h5>
+                            <p class="card-text">Submit complaints, track status, and receive updates on resolutions.</p>
+                            <a href="student-login.html" class="btn btn-primary mt-auto">Student Login</a>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-5 mb-4">
+                    <div class="card h-100 shadow-sm">
+                        <div class="card-body d-flex flex-column">
+                            <h5 class="card-title"><i class="fas fa-user-shield text-success"></i> Admin Portal</h5>
+                            <p class="card-text">Review, process, and resolve complaints submitted by students.</p>
+                            <a href="admin-login.html" class="btn btn-success mt-auto">Admin Login</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- College Information Section -->
+    <section class="college-info bg-light py-5">
+        <div class="container">
+            <div class="row">
+                <div class="col-md-6">
+                    <h2>About Our College</h2>
+                    <p>Founded with the vision of providing quality technical education, the University of Engineering & Management, Jaipur has been at the forefront of engineering and management education.</p>
+                    <ul>
+                        <li>Established in 2006 with a commitment to excellence</li>
+                        <li>Approved by AICTE and recognized by UGC</li>
+                        <li>Wide range of undergraduate and postgraduate programs</li>
+                        <li>Modern infrastructure and well-equipped laboratories</li>
+                        <li>Experienced faculty with industry expertise</li>
+                        <li>Strong placement record with top recruiters</li>
+                    </ul>
+                </div>
+                <div class="col-md-6">
+                    <h2>Our Values</h2>
+                    <div class="values-list">
+                        <div class="value-item mb-3">
+                            <h5><i class="fas fa-graduation-cap text-primary"></i> Excellence</h5>
+                            <p>Commitment to providing high-quality education and services.</p>
+                        </div>
+                        <div class="value-item mb-3">
+                            <h5><i class="fas fa-hands-helping text-success"></i> Integrity</h5>
+                            <p>Maintaining honesty and ethical standards in all our actions.</p>
+                        </div>
+                        <div class="value-item mb-3">
+                            <h5><i class="fas fa-users text-info"></i> Community</h5>
+                            <p>Fostering a supportive and inclusive environment for all.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section class="features-section bg-white py-5">
+        <div class="container">
+            <h2 class="text-center mb-5">Key Features</h2>
+            <div class="row">
+                <div class="col-md-4 mb-4">
+                    <div class="card h-100 text-center">
+                        <div class="card-body">
+                            <div class="feature-icon bg-primary text-white rounded-circle mx-auto mb-3">
+                                <i class="fas fa-file-alt"></i>
+                            </div>
+                            <h5 class="card-title">Easy Complaint Submission</h5>
+                            <p class="card-text">Simple form to submit complaints with all necessary details.</p>
+                            <button class="btn btn-outline-primary mt-2" onclick="showFeatureDetails('submission')">Learn More</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-4">
+                    <div class="card h-100 text-center">
+                        <div class="card-body">
+                            <div class="feature-icon bg-success text-white rounded-circle mx-auto mb-3">
+                                <i class="fas fa-route"></i>
+                            </div>
+                            <h5 class="card-title">Structured Escalation</h5>
+                            <p class="card-text">Automatic routing based on complaint type to appropriate authorities.</p>
+                            <button class="btn btn-outline-success mt-2" onclick="showFeatureDetails('escalation')">Learn More</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-4">
+                    <div class="card h-100 text-center">
+                        <div class="card-body">
+                            <div class="feature-icon bg-info text-white rounded-circle mx-auto mb-3">
+                                <i class="fas fa-history"></i>
+                            </div>
+                            <h5 class="card-title">Real-time Tracking</h5>
+                            <p class="card-text">Track complaint status and resolution progress in real-time.</p>
+                            <button class="btn btn-outline-info mt-2" onclick="showFeatureDetails('tracking')">Learn More</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Feature Details Modal -->
+    <div class="modal fade" id="featureDetailsModal" tabindex="-1" aria-labelledby="featureDetailsModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="featureDetailsModalLabel">Feature Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="featureDetailsContent">
+                    <!-- Content will be populated by JavaScript -->
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-dark text-white py-4">
+        <div class="container text-center">
+            <p>&copy; 2025 University of Engineering & Management, Jaipur. All rights reserved.</p>
+            <p class="mb-0">Designed for efficient student grievance redressal</p>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Function to show feature details in modal
+        function showFeatureDetails(feature) {
+            const modalTitle = document.getElementById('featureDetailsModalLabel');
+            const modalBody = document.getElementById('featureDetailsContent');
+            
+            switch(feature) {
+                case 'submission':
+                    modalTitle.textContent = 'Easy Complaint Submission';
+                    modalBody.innerHTML = `
+                        <p>Our complaint submission system is designed to be simple and intuitive:</p>
+                        <ul>
+                            <li>Fill out a straightforward form with all necessary details</li>
+                            <li>Attach supporting documents or images if needed</li>
+                            <li>Submit with a single click</li>
+                            <li>Receive immediate confirmation with complaint ID</li>
+                        </ul>
+                        <p>This ensures that students can quickly and easily report issues without any technical barriers.</p>
+                    `;
+                    break;
+                case 'escalation':
+                    modalTitle.textContent = 'Structured Escalation';
+                    modalBody.innerHTML = `
+                        <p>Complaints are automatically routed to the appropriate authority based on type:</p>
+                        <ul>
+                            <li><strong>Hostel/Mess:</strong> Warden → Registrar → VC</li>
+                            <li><strong>Academic:</strong> Mentor → Dean → Registrar → VC</li>
+                            <li><strong>Exam Related:</strong> Exam Cell → Dean → Registrar → VC</li>
+                            <li><strong>Disciplinary Issue:</strong> Disciplinary Committee → Registrar → VC</li>
+                            <li><strong>Other:</strong> Registrar → VC</li>
+                        </ul>
+                        <p>This ensures that complaints reach the right person quickly for efficient resolution.</p>
+                    `;
+                    break;
+                case 'tracking':
+                    modalTitle.textContent = 'Real-time Tracking';
+                    modalBody.innerHTML = `
+                        <p>Track your complaint status in real-time:</p>
+                        <ul>
+                            <li>View current status (Pending, In Progress, Resolved, Escalated)</li>
+                            <li>See history of actions taken on your complaint</li>
+                            <li>Receive notifications on status updates</li>
+                            <li>Access resolution details when complaint is closed</li>
+                        </ul>
+                        <p>This transparency ensures you're always informed about the progress of your complaint.</p>
+                    `;
+                    break;
+                default:
+                    modalTitle.textContent = 'Feature Details';
+                    modalBody.innerHTML = '<p>Details for this feature are not available.</p>';
+            }
+            
+            // Show the modal
+            const modal = new bootstrap.Modal(document.getElementById('featureDetailsModal'));
+            modal.show();
+        }
+    </script>
+</body>
+</html>

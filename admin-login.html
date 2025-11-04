@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Login - College Complaint Management System</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <!-- Navigation Bar -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="index.html">
+                <i class="fas fa-university"></i> College Complaint Management System
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="student-login.html">Student Login</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="admin-login.html">Admin Login</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Login Section -->
+    <section class="login-section py-5">
+        <div class="container">
+            <div class="row justify-content-center">
+                <div class="col-md-6 col-lg-5">
+                    <div class="card shadow">
+                        <div class="card-body p-5">
+                            <div class="text-center mb-4">
+                                <div class="feature-icon bg-success text-white rounded-circle mx-auto mb-3">
+                                    <i class="fas fa-user-shield"></i>
+                                </div>
+                                <h3 class="card-title">Admin Login</h3>
+                                <p class="text-muted">Access your admin dashboard</p>
+                            </div>
+                            
+                            <form id="adminLoginForm">
+                                <div class="mb-3">
+                                    <label for="adminEmail" class="form-label">Email Address</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text"><i class="fas fa-envelope"></i></span>
+                                        <input type="email" class="form-control" id="adminEmail" placeholder="Enter your email" required>
+                                    </div>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="adminPassword" class="form-label">Password</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text"><i class="fas fa-lock"></i></span>
+                                        <input type="password" class="form-control" id="adminPassword" placeholder="Enter your password" required>
+                                    </div>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="adminRole" class="form-label">Role</label>
+                                    <select class="form-select" id="adminRole" required>
+                                        <option value="">Select your role</option>
+                                        <option value="warden">Warden</option>
+                                        <option value="mentor">Mentor</option>
+                                        <option value="examcell">Exam Cell</option>
+                                        <option value="disciplinary">Disciplinary Committee</option>
+                                        <option value="registrar">Registrar</option>
+                                        <option value="vc">Vice Chancellor</option>
+                                    </select>
+                                </div>
+                                
+                                <div class="d-grid mb-3">
+                                    <button type="submit" class="btn btn-success">Login</button>
+                                </div>
+                                
+                                <div class="text-center mb-3">
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="showAdminHelp()">
+                                        <i class="fas fa-question-circle"></i> Login Help
+                                    </button>
+                                </div>
+                                
+                                <div class="text-center">
+                                    <small class="text-muted">
+                                        Don't have an account? Contact the system administrator.
+                                    </small>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Admin Help Modal -->
+    <div class="modal fade" id="adminHelpModal" tabindex="-1" aria-labelledby="adminHelpModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="adminHelpModalLabel">Admin Login Help</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p>To log in as an administrator, you need:</p>
+                    <ul>
+                        <li>A valid college email address</li>
+                        <li>Your assigned password</li>
+                        <li>Your specific role in the college administration</li>
+                    </ul>
+                    <p>If you're having trouble logging in:</p>
+                    <ul>
+                        <li>Ensure you're using the correct email and password</li>
+                        <li>Select the appropriate role from the dropdown</li>
+                        <li>Contact the system administrator if you continue to have issues</li>
+                    </ul>
+                    <p>System Administrator Contact:</p>
+                    <ul>
+                        <li>Email: sysadmin@uemjaipur.edu.in</li>
+                        <li>Phone: +91-123-456-7891</li>
+                    </ul>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-dark text-white py-4 mt-5">
+        <div class="container text-center">
+            <p>&copy; 2025 University of Engineering & Management, Jaipur. All rights reserved.</p>
+            <p class="mb-0">Designed for efficient student grievance redressal</p>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/admin-login.js"></script>
+    <script>
+        // Function to show admin help modal
+        function showAdminHelp() {
+            const modal = new bootstrap.Modal(document.getElementById('adminHelpModal'));
+            modal.show();
+        }
+    </script>
+</body>
+</html>
