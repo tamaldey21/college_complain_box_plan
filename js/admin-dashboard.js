@@ -65,9 +65,8 @@ function loadDashboardStats() {
         return;
     }
     
-    // Fetch complaints assigned to this admin's role
+    // Fetch all complaints and filter by visibility
     db.collection('complaints')
-        .where('assignedTo', '==', assignedTo)
         .get()
         .then((querySnapshot) => {
             let total = 0;
@@ -76,14 +75,22 @@ function loadDashboardStats() {
             let escalated = 0;
             
             querySnapshot.forEach((doc) => {
-                total++;
                 const data = doc.data();
-                if (data.status === 'pending' || data.status === 'in-progress') {
-                    pending++;
-                } else if (data.status === 'resolved') {
-                    resolved++;
-                } else if (data.status === 'escalated') {
-                    escalated++;
+                // Only count complaints visible to current admin
+                if (isComplaintVisibleToAdmin(data, currentUser.role)) {
+                    total++;
+                    const assignedTo = getAssignedToForRole(currentUser.role);
+                    // If escalated complaint is assigned to current admin, count it as pending (needs action)
+                    if (data.status === 'escalated' && data.assignedTo === assignedTo) {
+                        pending++; // Escalated complaints assigned to current admin need action
+                        escalated++; // Also count in escalated
+                    } else if (data.status === 'pending' || data.status === 'in-progress') {
+                        pending++;
+                    } else if (data.status === 'resolved') {
+                        resolved++;
+                    } else if (data.status === 'escalated') {
+                        escalated++;
+                    }
                 }
             });
             
@@ -156,6 +163,30 @@ function getStatusText(status) {
     }
 }
 
+// Helper function to check if complaint should be visible to current admin
+// A complaint is visible if:
+// 1. It's assigned to the current admin, OR
+// 2. The current admin is in the escalation chain
+function isComplaintVisibleToAdmin(complaintData, currentAdminRole) {
+    if (!complaintData || !currentAdminRole) return false;
+    
+    const assignedTo = getAssignedToForRole(currentAdminRole);
+    if (!assignedTo) return false;
+    
+    // Check if assigned to current admin
+    if (complaintData.assignedTo === assignedTo) {
+        return true;
+    }
+    
+    // Check if current admin is in escalation chain
+    const escalationChain = complaintData.escalationChain || [];
+    if (Array.isArray(escalationChain) && escalationChain.includes(assignedTo)) {
+        return true;
+    }
+    
+    return false;
+}
+
 // Load pending complaints
 function loadPendingComplaints() {
     const tableBody = document.getElementById('pendingComplaintsTable');
@@ -174,23 +205,38 @@ function loadPendingComplaints() {
     // Show loading
     tableBody.innerHTML = '<tr><td colspan="6" class="text-center">Loading complaints...</td></tr>';
     
-    // Fetch pending complaints assigned to this admin
+    // Fetch all pending/in-progress/escalated complaints and filter by visibility
+    // Escalated complaints are included because they need action from the assigned admin
     db.collection('complaints')
-        .where('assignedTo', '==', assignedTo)
-        .where('status', 'in', ['pending', 'in-progress'])
-        .orderBy('createdAt', 'desc')
-        .limit(10)
+        .where('status', 'in', ['pending', 'in-progress', 'escalated'])
         .get()
         .then((querySnapshot) => {
-            if (querySnapshot.empty) {
+            // Filter complaints visible to current admin
+            const visibleComplaints = [];
+            querySnapshot.forEach((doc) => {
+                const data = doc.data();
+                if (isComplaintVisibleToAdmin(data, currentUser.role)) {
+                    visibleComplaints.push({ id: doc.id, data: data });
+                }
+            });
+            
+            if (visibleComplaints.length === 0) {
                 tableBody.innerHTML = '<tr><td colspan="6" class="text-center">No pending complaints found</td></tr>';
                 return;
             }
             
+            // Sort by creation date (newest first)
+            visibleComplaints.sort((a, b) => {
+                const aTime = a.data.createdAt?.toDate ? a.data.createdAt.toDate().getTime() : 0;
+                const bTime = b.data.createdAt?.toDate ? b.data.createdAt.toDate().getTime() : 0;
+                return bTime - aTime;
+            });
+            
+            // Limit to 10 most recent
+            const displayComplaints = visibleComplaints.slice(0, 10);
+            
             let html = '';
-            querySnapshot.forEach((doc) => {
-                const data = doc.data();
-                const complaintId = doc.id;
+            displayComplaints.forEach(({ id, data }) => {
                 const date = formatDate(data.createdAt);
                 const studentInfo = `${data.studentName || 'Student'} (${data.enrollmentNumber || 'N/A'})`;
                 const typeText = getComplaintTypeText(data.complaintType);
@@ -200,13 +246,13 @@ function loadPendingComplaints() {
                 
                 html += `
                     <tr>
-                        <td>${complaintId}</td>
+                        <td>${id}</td>
                         <td>${studentInfo}</td>
                         <td>${typeText}</td>
                         <td>${description}</td>
                         <td>${date}</td>
                         <td>
-                            <button class="btn btn-sm btn-primary btn-action" onclick="viewComplaint('${complaintId}')">View</button>
+                            <button class="btn btn-sm btn-primary btn-action" onclick="viewComplaint('${id}')">View</button>
             </td>
         </tr>
                 `;
@@ -216,60 +262,7 @@ function loadPendingComplaints() {
         })
         .catch((error) => {
             console.error('Error loading pending complaints:', error);
-            // If orderBy fails, try without it
-            if (error.code === 'failed-precondition') {
-                db.collection('complaints')
-                    .where('assignedTo', '==', assignedTo)
-                    .where('status', 'in', ['pending', 'in-progress'])
-                    .get()
-                    .then((querySnapshot) => {
-                        if (querySnapshot.empty) {
-                            tableBody.innerHTML = '<tr><td colspan="6" class="text-center">No pending complaints found</td></tr>';
-                            return;
-                        }
-                        
-                        let html = '';
-                        const complaints = [];
-                        querySnapshot.forEach((doc) => {
-                            complaints.push({ id: doc.id, data: doc.data() });
-                        });
-                        complaints.sort((a, b) => {
-                            const aTime = a.data.createdAt?.toDate ? a.data.createdAt.toDate().getTime() : 0;
-                            const bTime = b.data.createdAt?.toDate ? b.data.createdAt.toDate().getTime() : 0;
-                            return bTime - aTime;
-                        });
-                        
-                        complaints.slice(0, 10).forEach(({ id, data }) => {
-                            const date = formatDate(data.createdAt);
-                            const studentInfo = `${data.studentName || 'Student'} (${data.enrollmentNumber || 'N/A'})`;
-                            const typeText = getComplaintTypeText(data.complaintType);
-                            const description = (data.complaintDescription || '').length > 50 
-                                ? data.complaintDescription.substring(0, 50) + '...' 
-                                : data.complaintDescription;
-                            
-                            html += `
-                                <tr>
-                                    <td>${id}</td>
-                                    <td>${studentInfo}</td>
-                                    <td>${typeText}</td>
-                                    <td>${description}</td>
-                                    <td>${date}</td>
-                                    <td>
-                                        <button class="btn btn-sm btn-primary btn-action" onclick="viewComplaint('${id}')">View</button>
-            </td>
-        </tr>
-    `;
-                        });
-                        
-                        tableBody.innerHTML = html;
-                    })
-                    .catch((fallbackError) => {
-                        console.error('Fallback error:', fallbackError);
-                        tableBody.innerHTML = '<tr><td colspan="6" class="text-center">Error loading complaints</td></tr>';
-                    });
-            } else {
-                tableBody.innerHTML = '<tr><td colspan="6" class="text-center">Error loading complaints</td></tr>';
-            }
+            tableBody.innerHTML = '<tr><td colspan="6" class="text-center">Error loading complaints</td></tr>';
         });
 }
 
@@ -357,22 +350,38 @@ function loadAllPendingComplaints() {
     
     tableBody.innerHTML = '<tr><td colspan="7" class="text-center">Loading complaints...</td></tr>';
     
-    // Fetch pending complaints assigned to this admin
+    // Fetch all pending/in-progress/escalated complaints and filter by visibility
+    // Escalated complaints are included because they need action from the assigned admin
     db.collection('complaints')
-        .where('assignedTo', '==', assignedTo)
-        .where('status', 'in', ['pending', 'in-progress'])
-        .orderBy('createdAt', 'desc')
+        .where('status', 'in', ['pending', 'in-progress', 'escalated'])
         .get()
         .then((querySnapshot) => {
-            if (querySnapshot.empty) {
+            // Filter complaints visible to current admin
+            const visibleComplaints = [];
+            querySnapshot.forEach((doc) => {
+                const data = doc.data();
+                if (isComplaintVisibleToAdmin(data, currentUser.role)) {
+                    visibleComplaints.push({ id: doc.id, data: data });
+                }
+            });
+            
+            if (visibleComplaints.length === 0) {
                 tableBody.innerHTML = '<tr><td colspan="7" class="text-center">No pending complaints found</td></tr>';
                 return;
             }
             
+            // Sort by creation date (newest first)
+            visibleComplaints.sort((a, b) => {
+                const aTime = a.data.createdAt?.toDate ? a.data.createdAt.toDate().getTime() : 0;
+                const bTime = b.data.createdAt?.toDate ? b.data.createdAt.toDate().getTime() : 0;
+                return bTime - aTime;
+            });
+            
+            const isVC = currentUser && currentUser.role && currentUser.role.toLowerCase() === 'vc';
+            
             let html = '';
-            querySnapshot.forEach((doc) => {
-                const data = doc.data();
-                const complaintId = doc.id;
+            visibleComplaints.forEach(({ id, data }) => {
+                const complaintId = id;
                 const date = formatDate(data.createdAt);
                 const studentInfo = `${data.studentName || 'Student'} (${data.enrollmentNumber || 'N/A'})`;
                 const typeText = getComplaintTypeText(data.complaintType);
@@ -382,6 +391,23 @@ function loadAllPendingComplaints() {
                 const statusClass = getStatusBadgeClass(data.status);
                 const statusText = getStatusText(data.status);
                 
+                // Show action buttons only if assigned to current admin
+                const isAssignedToMe = data.assignedTo === assignedTo;
+                let actionButtons = '';
+                if (isAssignedToMe) {
+                    actionButtons = `
+                        <button class="btn btn-sm btn-success btn-action" onclick="resolveComplaint('${complaintId}')">Resolve</button>
+                    `;
+                    // Only show escalate button if not VC
+                    if (!isVC) {
+                        actionButtons += `
+                            <button class="btn btn-sm btn-warning btn-action" onclick="escalateComplaint('${complaintId}')">Escalate</button>
+                        `;
+                    }
+                } else {
+                    actionButtons = `<button class="btn btn-sm btn-primary btn-action" onclick="viewComplaint('${complaintId}')">View</button>`;
+                }
+                
                 html += `
                     <tr>
                         <td>${complaintId}</td>
@@ -390,9 +416,7 @@ function loadAllPendingComplaints() {
                         <td>${description}</td>
                         <td><span class="status-badge ${statusClass}">${statusText}</span></td>
                         <td>${date}</td>
-                        <td>
-                            <button class="btn btn-sm btn-success btn-action" onclick="resolveComplaint('${complaintId}')">Resolve</button>
-                            <button class="btn btn-sm btn-warning btn-action" onclick="escalateComplaint('${complaintId}')">Escalate</button>
+                        <td>${actionButtons}</td>
             </td>
         </tr>
     `;
@@ -423,22 +447,35 @@ function loadResolvedComplaints() {
     
     tableBody.innerHTML = '<tr><td colspan="7" class="text-center">Loading complaints...</td></tr>';
     
-    // Fetch resolved complaints assigned to this admin
+    // Fetch all resolved complaints and filter by visibility
     db.collection('complaints')
-        .where('assignedTo', '==', assignedTo)
         .where('status', '==', 'resolved')
-        .orderBy('createdAt', 'desc')
         .get()
         .then((querySnapshot) => {
-            if (querySnapshot.empty) {
+            // Filter complaints visible to current admin
+            const visibleComplaints = [];
+            querySnapshot.forEach((doc) => {
+                const data = doc.data();
+                if (isComplaintVisibleToAdmin(data, currentUser.role)) {
+                    visibleComplaints.push({ id: doc.id, data: data });
+                }
+            });
+            
+            if (visibleComplaints.length === 0) {
                 tableBody.innerHTML = '<tr><td colspan="7" class="text-center">No resolved complaints found</td></tr>';
                 return;
             }
             
+            // Sort by creation date (newest first)
+            visibleComplaints.sort((a, b) => {
+                const aTime = a.data.createdAt?.toDate ? a.data.createdAt.toDate().getTime() : 0;
+                const bTime = b.data.createdAt?.toDate ? b.data.createdAt.toDate().getTime() : 0;
+                return bTime - aTime;
+            });
+            
             let html = '';
-            querySnapshot.forEach((doc) => {
-                const data = doc.data();
-                const complaintId = doc.id;
+            visibleComplaints.forEach(({ id, data }) => {
+                const complaintId = id;
                 const date = formatDate(data.createdAt);
                 const studentInfo = `${data.studentName || 'Student'} (${data.enrollmentNumber || 'N/A'})`;
                 const typeText = getComplaintTypeText(data.complaintType);
@@ -484,22 +521,35 @@ function loadEscalatedComplaints() {
     
     tableBody.innerHTML = '<tr><td colspan="7" class="text-center">Loading complaints...</td></tr>';
     
-    // Fetch escalated complaints assigned to this admin
+    // Fetch all escalated complaints and filter by visibility
     db.collection('complaints')
-        .where('assignedTo', '==', assignedTo)
         .where('status', '==', 'escalated')
-        .orderBy('createdAt', 'desc')
         .get()
         .then((querySnapshot) => {
-            if (querySnapshot.empty) {
+            // Filter complaints visible to current admin
+            const visibleComplaints = [];
+            querySnapshot.forEach((doc) => {
+                const data = doc.data();
+                if (isComplaintVisibleToAdmin(data, currentUser.role)) {
+                    visibleComplaints.push({ id: doc.id, data: data });
+                }
+            });
+            
+            if (visibleComplaints.length === 0) {
                 tableBody.innerHTML = '<tr><td colspan="7" class="text-center">No escalated complaints found</td></tr>';
                 return;
             }
             
+            // Sort by creation date (newest first)
+            visibleComplaints.sort((a, b) => {
+                const aTime = a.data.createdAt?.toDate ? a.data.createdAt.toDate().getTime() : 0;
+                const bTime = b.data.createdAt?.toDate ? b.data.createdAt.toDate().getTime() : 0;
+                return bTime - aTime;
+            });
+            
             let html = '';
-            querySnapshot.forEach((doc) => {
-                const data = doc.data();
-                const complaintId = doc.id;
+            visibleComplaints.forEach(({ id, data }) => {
+                const complaintId = id;
                 const date = formatDate(data.createdAt);
                 const studentInfo = `${data.studentName || 'Student'} (${data.enrollmentNumber || 'N/A'})`;
                 const typeText = getComplaintTypeText(data.complaintType);
@@ -545,21 +595,34 @@ function loadAllComplaints() {
     
     tableBody.innerHTML = '<tr><td colspan="7" class="text-center">Loading complaints...</td></tr>';
     
-    // Fetch all complaints assigned to this admin
+    // Fetch all complaints and filter by visibility
     db.collection('complaints')
-        .where('assignedTo', '==', assignedTo)
-        .orderBy('createdAt', 'desc')
         .get()
         .then((querySnapshot) => {
-            if (querySnapshot.empty) {
+            // Filter complaints visible to current admin
+            const visibleComplaints = [];
+            querySnapshot.forEach((doc) => {
+                const data = doc.data();
+                if (isComplaintVisibleToAdmin(data, currentUser.role)) {
+                    visibleComplaints.push({ id: doc.id, data: data });
+                }
+            });
+            
+            if (visibleComplaints.length === 0) {
                 tableBody.innerHTML = '<tr><td colspan="7" class="text-center">No complaints found</td></tr>';
                 return;
             }
             
+            // Sort by creation date (newest first)
+            visibleComplaints.sort((a, b) => {
+                const aTime = a.data.createdAt?.toDate ? a.data.createdAt.toDate().getTime() : 0;
+                const bTime = b.data.createdAt?.toDate ? b.data.createdAt.toDate().getTime() : 0;
+                return bTime - aTime;
+            });
+            
             let html = '';
-            querySnapshot.forEach((doc) => {
-                const data = doc.data();
-                const complaintId = doc.id;
+            visibleComplaints.forEach(({ id, data }) => {
+                const complaintId = id;
                 const date = formatDate(data.createdAt);
                 const studentInfo = `${data.studentName || 'Student'} (${data.enrollmentNumber || 'N/A'})`;
                 const typeText = getComplaintTypeText(data.complaintType);
@@ -569,13 +632,21 @@ function loadAllComplaints() {
                 const statusClass = getStatusBadgeClass(data.status);
                 const statusText = getStatusText(data.status);
                 
-                // Show action buttons based on status
+                // Show action buttons based on status and assignment
                 let actionButtons = '';
-                if (data.status === 'pending' || data.status === 'in-progress') {
+                const isVC = currentUser && currentUser.role && currentUser.role.toLowerCase() === 'vc';
+                const isAssignedToMe = data.assignedTo === assignedTo;
+                
+                if ((data.status === 'pending' || data.status === 'in-progress' || data.status === 'escalated') && isAssignedToMe) {
                     actionButtons = `
                         <button class="btn btn-sm btn-success btn-action" onclick="resolveComplaint('${complaintId}')">Resolve</button>
-                        <button class="btn btn-sm btn-warning btn-action" onclick="escalateComplaint('${complaintId}')">Escalate</button>
                     `;
+                    // Only show escalate button if not VC
+                    if (!isVC) {
+                        actionButtons += `
+                            <button class="btn btn-sm btn-warning btn-action" onclick="escalateComplaint('${complaintId}')">Escalate</button>
+                        `;
+                    }
                 } else {
                     actionButtons = `<button class="btn btn-sm btn-primary btn-action" onclick="viewComplaint('${complaintId}')">View</button>`;
                 }
@@ -764,17 +835,35 @@ function viewComplaint(complaintId) {
                 const modalFooter = document.getElementById('complaintDetailsFooter');
                 let footerHTML = '<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>';
                 
-                // Show "Mark as Resolved" button only for pending or in-progress complaints
-                if (data.status === 'pending' || data.status === 'in-progress') {
-                    footerHTML = `
-                        <button type="button" class="btn btn-success" onclick="resolveComplaintFromModal('${complaintId}')">
-                            <i class="fas fa-check-circle"></i> Mark as Resolved
-                        </button>
-                        <button type="button" class="btn btn-warning" onclick="escalateComplaintFromModal('${complaintId}')">
-                            <i class="fas fa-arrow-up"></i> Escalate
-                        </button>
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    `;
+                // Show action buttons based on status and user role
+                if (data.status === 'pending' || data.status === 'in-progress' || data.status === 'escalated') {
+                    // Check if current user is VC - VC cannot escalate
+                    const isVC = currentUser && currentUser.role && currentUser.role.toLowerCase() === 'vc';
+                    const assignedTo = getAssignedToForRole(currentUser.role);
+                    const isAssignedToMe = data.assignedTo === assignedTo;
+                    
+                    // Show resolve button if assigned to current admin
+                    if (isAssignedToMe) {
+                        footerHTML = `
+                            <button type="button" class="btn btn-success" onclick="resolveComplaintFromModal('${complaintId}')">
+                                <i class="fas fa-check-circle"></i> Mark as Resolved
+                            </button>
+                        `;
+                        
+                        // Show escalate button only if not VC and complaint is assigned to them
+                        if (!isVC && isAssignedToMe) {
+                            footerHTML += `
+                                <button type="button" class="btn btn-warning" onclick="escalateComplaintFromModal('${complaintId}')">
+                                    <i class="fas fa-arrow-up"></i> Escalate
+                                </button>
+                            `;
+                        }
+                        
+                        footerHTML += `<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>`;
+                    } else {
+                        // Not assigned to current admin - only show close button
+                        footerHTML = `<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>`;
+                    }
                 }
                 
                 if (modalFooter) {
@@ -883,51 +972,145 @@ function escalateComplaintFromModal(complaintId) {
 window.resolveComplaintFromModal = resolveComplaintFromModal;
 window.escalateComplaintFromModal = escalateComplaintFromModal;
 
-// Escalate complaint
+// Escalate complaint - shows modal to select admin
 function escalateComplaint(complaintId) {
-    if (!db) {
-        alert('Database not available');
+    if (!db || !currentUser) {
+        alert('Database or user not available');
         return;
     }
     
-    // Determine next authority based on current assignment
-    if (confirm(`Are you sure you want to escalate complaint ${complaintId}?`)) {
-        // Get current complaint to determine escalation path
-        db.collection('complaints').doc(complaintId).get()
-            .then((doc) => {
-                if (!doc.exists) {
-                    alert('Complaint not found');
-                    return;
-                }
-                
-                const data = doc.data();
-                const currentAssignedTo = data.assignedTo;
-                let nextAuthority = 'registrar'; // Default escalation
-                
-                // Escalation path
-                if (currentAssignedTo === 'warden') {
-                    nextAuthority = 'registrar';
-                } else if (currentAssignedTo === 'mentor') {
-                    nextAuthority = 'registrar';
-                } else if (currentAssignedTo === 'examcell') {
-                    nextAuthority = 'registrar';
-                } else if (currentAssignedTo === 'disciplinary') {
-                    nextAuthority = 'registrar';
-                } else if (currentAssignedTo === 'registrar') {
-                    nextAuthority = 'vc';
-                }
-                
-                // Update complaint
-                db.collection('complaints').doc(complaintId).update({
-                    status: 'escalated',
-                    assignedTo: nextAuthority,
-                    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                    escalatedBy: currentUser.email,
-                    escalatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                    previousAuthority: currentAssignedTo
-                })
+    // Check if user is VC - VC cannot escalate
+    if (currentUser.role && currentUser.role.toLowerCase() === 'vc') {
+        alert('Vice Chancellor is the final authority. This complaint cannot be escalated further.');
+        return;
+    }
+    
+    // Set the complaint ID in hidden field
+    document.getElementById('escalateComplaintId').value = complaintId;
+    
+    // Get available admin roles (excluding current admin)
+    const currentRole = getAssignedToForRole(currentUser.role);
+    const adminRoles = [
+        { value: 'warden', label: 'Warden' },
+        { value: 'mentor', label: 'Mentor' },
+        { value: 'examcell', label: 'Exam Cell' },
+        { value: 'disciplinary', label: 'Disciplinary Committee' },
+        { value: 'registrar', label: 'Registrar' },
+        { value: 'vc', label: 'Vice Chancellor' }
+    ];
+    
+    // Populate dropdown with available admins (excluding current admin)
+    const escalateToSelect = document.getElementById('escalateToAdmin');
+    escalateToSelect.innerHTML = '<option value="">Select an admin...</option>';
+    
+    adminRoles.forEach(role => {
+        // Don't show current admin as option
+        if (role.value !== currentRole) {
+            escalateToSelect.innerHTML += `<option value="${role.value}">${role.label}</option>`;
+        }
+    });
+    
+    // Clear escalation reason
+    document.getElementById('escalationReason').value = '';
+    
+    // Show the modal
+    const modal = new bootstrap.Modal(document.getElementById('escalateComplaintModal'));
+    modal.show();
+}
+
+// Confirm escalation after admin selects target
+function confirmEscalation() {
+    const complaintId = document.getElementById('escalateComplaintId').value;
+    const escalateTo = document.getElementById('escalateToAdmin').value;
+    const escalationReason = document.getElementById('escalationReason').value.trim();
+    
+    if (!complaintId || !escalateTo) {
+        alert('Please select an admin to escalate to.');
+        return;
+    }
+    
+    if (!db || !currentUser) {
+        alert('Database or user not available');
+        return;
+    }
+    
+    // Get current complaint to update escalation chain
+    db.collection('complaints').doc(complaintId).get()
+        .then((doc) => {
+            if (!doc.exists) {
+                alert('Complaint not found');
+                return;
+            }
+            
+            const data = doc.data();
+            const currentAssignedTo = data.assignedTo || getAssignedToForRole(currentUser.role);
+            
+            // Get existing escalation chain or create new one
+            let escalationChain = data.escalationChain || [];
+            if (!Array.isArray(escalationChain)) {
+                escalationChain = [];
+            }
+            
+            // Add current admin to escalation chain if not already there
+            if (!escalationChain.includes(currentAssignedTo)) {
+                escalationChain.push(currentAssignedTo);
+            }
+            
+            // Add the target admin to escalation chain
+            if (!escalationChain.includes(escalateTo)) {
+                escalationChain.push(escalateTo);
+            }
+            
+            // Prepare update data
+            const updateData = {
+                status: 'escalated',
+                assignedTo: escalateTo,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                escalatedBy: currentUser.email,
+                escalatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                escalationChain: escalationChain,
+                previousAuthority: currentAssignedTo
+            };
+            
+            // Add escalation reason if provided
+            if (escalationReason) {
+                updateData.escalationReason = escalationReason;
+            }
+            
+            // Update complaint
+            db.collection('complaints').doc(complaintId).update(updateData)
                 .then(() => {
-                    alert(`Complaint ${complaintId} has been escalated to ${nextAuthority}.`);
+                    // Close modal
+                    const modalElement = document.getElementById('escalateComplaintModal');
+                    if (modalElement) {
+                        const modal = bootstrap.Modal.getInstance(modalElement);
+                        if (modal) {
+                            modal.hide();
+                        }
+                    }
+                    
+                    // Also close complaint details modal if open
+                    const detailsModalElement = document.getElementById('complaintDetailsModal');
+                    if (detailsModalElement) {
+                        const detailsModal = bootstrap.Modal.getInstance(detailsModalElement);
+                        if (detailsModal) {
+                            detailsModal.hide();
+                        }
+                    }
+                    
+                    // Get admin role label
+                    const adminRoles = {
+                        'warden': 'Warden',
+                        'mentor': 'Mentor',
+                        'examcell': 'Exam Cell',
+                        'disciplinary': 'Disciplinary Committee',
+                        'registrar': 'Registrar',
+                        'vc': 'Vice Chancellor'
+                    };
+                    
+                    const targetLabel = adminRoles[escalateTo] || escalateTo;
+                    alert(`Complaint ${complaintId} has been escalated to ${targetLabel}. The complaint will now appear in their dashboard.`);
+                    
                     // Refresh all views
                     loadDashboardStats();
                     loadPendingComplaints();
@@ -937,15 +1120,17 @@ function escalateComplaint(complaintId) {
                 })
                 .catch((error) => {
                     console.error('Error escalating complaint:', error);
-                    alert('Error updating complaint. Please try again.');
+                    alert('Error escalating complaint. Please try again.');
                 });
-            })
-            .catch((error) => {
-                console.error('Error fetching complaint:', error);
-                alert('Error loading complaint. Please try again.');
-            });
-    }
+        })
+        .catch((error) => {
+            console.error('Error fetching complaint:', error);
+            alert('Error loading complaint details');
+        });
 }
+
+// Make confirmEscalation globally available
+window.confirmEscalation = confirmEscalation;
 
 // Make functions available globally
 window.viewComplaint = viewComplaint;

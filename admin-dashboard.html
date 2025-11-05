@@ -345,6 +345,40 @@
         </div>
     </div>
 
+    <!-- Escalate Complaint Modal -->
+    <div class="modal fade" id="escalateComplaintModal" tabindex="-1" aria-labelledby="escalateComplaintModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-warning">
+                    <h5 class="modal-title" id="escalateComplaintModalLabel">
+                        <i class="fas fa-arrow-up"></i> Escalate Complaint
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Select the admin you want to escalate this complaint to:</p>
+                    <div class="mb-3">
+                        <label for="escalateToAdmin" class="form-label">Escalate To:</label>
+                        <select class="form-select" id="escalateToAdmin" required>
+                            <option value="">Select an admin...</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="escalationReason" class="form-label">Reason for Escalation (Optional):</label>
+                        <textarea class="form-control" id="escalationReason" rows="3" placeholder="Enter reason for escalation..."></textarea>
+                    </div>
+                    <input type="hidden" id="escalateComplaintId" value="">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-warning" onclick="confirmEscalation()">
+                        <i class="fas fa-arrow-up"></i> Escalate
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Footer -->
     <footer class="bg-dark text-white py-4 mt-5">
         <div class="container text-center">
