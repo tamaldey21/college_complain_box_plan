@@ -235,23 +235,50 @@ function adminLogin(email, password, role) {
                                 resolve(userData);
                             } else {
                                 // Account exists in Firebase but not in admins collection
-                                // This means it's not a registered admin account
-                                // Sign out the user and reject
-                                auth.signOut();
-                                reject(new Error('Access denied. This account is not authorized for admin access.'));
+                                // Option: Allow login but log a warning
+                                // For now, we'll allow login if account exists in Firebase Auth
+                                // (Admin can be added to Firestore later for enhanced features)
+                                console.warn('Admin account not found in Firestore admins collection, but allowing login');
+                                const userData = {
+                                    id: user.uid,
+                                    type: 'admin',
+                                    name: 'Admin',
+                                    email: email,
+                                    role: role
+                                };
+                                
+                                localStorage.setItem('currentUser', JSON.stringify(userData));
+                                resolve(userData);
+                                
+                                // Optional: Create admin document in Firestore for future reference
+                                // db.collection('admins').doc(email).set({
+                                //     name: 'Admin',
+                                //     role: role,
+                                //     email: email,
+                                //     createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                                // }).catch(err => console.error('Error creating admin doc:', err));
                             }
                         })
                         .catch((error) => {
                             console.error('Error checking admin status:', error);
-                            // If Firestore check fails, we can either:
-                            // Option 1: Allow login if account exists in Firebase (less secure)
-                            // Option 2: Deny access (more secure) - We'll do this
-                            auth.signOut();
-                            reject(new Error('Unable to verify admin access. Please contact system administrator.'));
+                            // If Firestore check fails, allow login if account exists in Firebase
+                            // This ensures admin can still log in even if Firestore has issues
+                            console.warn('Firestore check failed, allowing login based on Firebase Auth');
+                            const userData = {
+                                id: user.uid,
+                                type: 'admin',
+                                name: 'Admin',
+                                email: email,
+                                role: role
+                            };
+                            
+                            localStorage.setItem('currentUser', JSON.stringify(userData));
+                            resolve(userData);
                         });
                 } else {
                     // Firestore not available - still allow login if account exists in Firebase
                     // But at least we've blocked student emails above
+                    console.log('Firestore not available, allowing login based on Firebase Auth');
                     const userData = {
                         id: user.uid,
                         type: 'admin',
