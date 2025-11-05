@@ -4,13 +4,55 @@ let currentUser = null;
 let chatbotState = 0; // Track chatbot conversation state
 let complaintData = {}; // Store complaint data during chatbot conversation
 let chatHistory = []; // Store chat history for AI context
+// Note: db is declared in auth.js, so we don't redeclare it here to avoid conflicts
+
+// Initialize Firestore if available
+function initializeFirestore() {
+    // Use the db from auth.js (already initialized there)
+    // If not available, try to get it from firebase
+    if (typeof window !== 'undefined' && window.APP_CONFIG && window.APP_CONFIG.FIREBASE) {
+        try {
+            if (typeof firebase !== 'undefined' && firebase.firestore) {
+                // db should already be initialized in auth.js
+                // Just verify it's available
+                if (typeof db === 'undefined' || db === null) {
+                    // If db is not available, initialize it (shouldn't happen if auth.js loaded correctly)
+                    console.warn('db not found from auth.js, initializing...');
+                    if (typeof window.db === 'undefined') {
+                        window.db = firebase.firestore();
+                    }
+                }
+                console.log('Firestore initialized successfully');
+                return true;
+            } else {
+                console.error('Firebase Firestore not available');
+                return false;
+            }
+        } catch (error) {
+            console.error('Firestore initialization error:', error);
+            return false;
+        }
+    } else {
+        console.error('Firebase configuration not found');
+        return false;
+    }
+}
 
 document.addEventListener('DOMContentLoaded', () => {
+    // Initialize Firestore first
+    initializeFirestore();
+    
     // Check authentication
     currentUser = getCurrentUser();
     if (!currentUser || currentUser.type !== 'student') {
         window.location.href = 'index.html';
         return;
+    }
+    
+    // Verify Firestore is available
+    if (!db) {
+        console.error('Firestore not initialized. Please check Firebase configuration.');
+        alert('Warning: Database connection not available. Some features may not work.');
     }
     
     // Load student data
@@ -37,70 +79,308 @@ function loadStudentData(userData) {
 
 // Load dashboard statistics
 function loadDashboardStats() {
-    // In a real implementation, this would fetch from a database
-    // For now, we'll simulate with sample data
-    document.getElementById('totalComplaints').textContent = '5';
-    document.getElementById('pendingComplaints').textContent = '2';
-    document.getElementById('resolvedComplaints').textContent = '3';
+    if (!db || !currentUser) {
+        // Fallback if Firestore is not available
+        document.getElementById('totalComplaints').textContent = '0';
+        document.getElementById('pendingComplaints').textContent = '0';
+        document.getElementById('resolvedComplaints').textContent = '0';
+        return;
+    }
+    
+    // Fetch complaints for current student
+    db.collection('complaints')
+        .where('enrollmentNumber', '==', currentUser.enrollmentNumber)
+        .get()
+        .then((querySnapshot) => {
+            let total = 0;
+            let pending = 0;
+            let resolved = 0;
+            
+            querySnapshot.forEach((doc) => {
+                total++;
+                const data = doc.data();
+                if (data.status === 'pending' || data.status === 'in-progress') {
+                    pending++;
+                } else if (data.status === 'resolved') {
+                    resolved++;
+                }
+            });
+            
+            document.getElementById('totalComplaints').textContent = total;
+            document.getElementById('pendingComplaints').textContent = pending;
+            document.getElementById('resolvedComplaints').textContent = resolved;
+        })
+        .catch((error) => {
+            console.error('Error loading dashboard stats:', error);
+            document.getElementById('totalComplaints').textContent = '0';
+            document.getElementById('pendingComplaints').textContent = '0';
+            document.getElementById('resolvedComplaints').textContent = '0';
+        });
 }
 
 // Load recent complaints
 function loadRecentComplaints() {
-    // In a real implementation, this would fetch from a database
-    // For now, we'll simulate with sample data
     const tableBody = document.getElementById('recentComplaintsTable');
-    tableBody.innerHTML = `
-        <tr>
-            <td>CMPL-001</td>
-            <td>Hostel/Mess</td>
-            <td>No hot water in hostel</td>
-            <td><span class="status-badge badge-resolved">Resolved</span></td>
-            <td>2025-10-25</td>
-            <td>
-                <button class="btn btn-sm btn-primary btn-action">View</button>
+    
+    if (!db || !currentUser) {
+        tableBody.innerHTML = '<tr><td colspan="6" class="text-center">No complaints found</td></tr>';
+        return;
+    }
+    
+    // Fetch recent complaints for current student (limit to 5 most recent)
+    // Note: If orderBy fails, it means Firestore index needs to be created
+    // The error will be logged and we'll fetch without ordering
+    db.collection('complaints')
+        .where('enrollmentNumber', '==', currentUser.enrollmentNumber)
+        .orderBy('createdAt', 'desc')
+        .limit(5)
+        .get()
+        .then((querySnapshot) => {
+            if (querySnapshot.empty) {
+                tableBody.innerHTML = '<tr><td colspan="6" class="text-center">No complaints found</td></tr>';
+                return;
+            }
+            
+            let html = '';
+            querySnapshot.forEach((doc) => {
+                const data = doc.data();
+                const complaintId = doc.id;
+                // Handle Firestore timestamp
+                let date = 'N/A';
+                if (data.createdAt) {
+                    if (data.createdAt.toDate) {
+                        date = data.createdAt.toDate().toLocaleDateString();
+                    } else if (data.createdAt.seconds) {
+                        date = new Date(data.createdAt.seconds * 1000).toLocaleDateString();
+                    }
+                }
+                const statusClass = getStatusBadgeClass(data.status);
+                const statusText = getStatusText(data.status);
+                const typeText = getComplaintTypeText(data.complaintType);
+                const description = (data.complaintDescription || '').length > 50 
+                    ? data.complaintDescription.substring(0, 50) + '...' 
+                    : data.complaintDescription;
+                
+                html += `
+                    <tr>
+                        <td>${complaintId}</td>
+                        <td>${typeText}</td>
+                        <td>${description}</td>
+                        <td><span class="status-badge ${statusClass}">${statusText}</span></td>
+                        <td>${date}</td>
+                        <td>
+                            <button class="btn btn-sm btn-primary btn-action" onclick="viewComplaint('${complaintId}')">View</button>
             </td>
         </tr>
-        <tr>
-            <td>CMPL-003</td>
-            <td>Academic</td>
-            <td>Issue with course material</td>
-            <td><span class="status-badge badge-pending">Pending</span></td>
-            <td>2025-10-28</td>
-            <td>
-                <button class="btn btn-sm btn-primary btn-action">View</button>
+                `;
+            });
+            
+            tableBody.innerHTML = html;
+        })
+        .catch((error) => {
+            console.error('Error loading recent complaints:', error);
+            // If orderBy fails, try without ordering (for when index is not created)
+            if (error.code === 'failed-precondition') {
+                db.collection('complaints')
+                    .where('enrollmentNumber', '==', currentUser.enrollmentNumber)
+                    .limit(5)
+                    .get()
+                    .then((querySnapshot) => {
+                        if (querySnapshot.empty) {
+                            tableBody.innerHTML = '<tr><td colspan="6" class="text-center">No complaints found</td></tr>';
+                            return;
+                        }
+                        // Sort in memory
+                        const complaints = [];
+                        querySnapshot.forEach((doc) => {
+                            complaints.push({ id: doc.id, data: doc.data() });
+                        });
+                        complaints.sort((a, b) => {
+                            const aTime = a.data.createdAt?.toDate ? a.data.createdAt.toDate().getTime() : 0;
+                            const bTime = b.data.createdAt?.toDate ? b.data.createdAt.toDate().getTime() : 0;
+                            return bTime - aTime;
+                        });
+                        
+                        let html = '';
+                        complaints.slice(0, 5).forEach(({ id, data }) => {
+                            let date = 'N/A';
+                            if (data.createdAt) {
+                                if (data.createdAt.toDate) {
+                                    date = data.createdAt.toDate().toLocaleDateString();
+                                } else if (data.createdAt.seconds) {
+                                    date = new Date(data.createdAt.seconds * 1000).toLocaleDateString();
+                                }
+                            }
+                            const statusClass = getStatusBadgeClass(data.status);
+                            const statusText = getStatusText(data.status);
+                            const typeText = getComplaintTypeText(data.complaintType);
+                            const description = (data.complaintDescription || '').length > 50 
+                                ? data.complaintDescription.substring(0, 50) + '...' 
+                                : data.complaintDescription;
+                            
+                            html += `
+                                <tr>
+                                    <td>${id}</td>
+                                    <td>${typeText}</td>
+                                    <td>${description}</td>
+                                    <td><span class="status-badge ${statusClass}">${statusText}</span></td>
+                                    <td>${date}</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-primary btn-action" onclick="viewComplaint('${id}')">View</button>
             </td>
         </tr>
     `;
+                        });
+                        tableBody.innerHTML = html;
+                    })
+                    .catch((fallbackError) => {
+                        console.error('Fallback error:', fallbackError);
+                        tableBody.innerHTML = '<tr><td colspan="6" class="text-center">Error loading complaints</td></tr>';
+                    });
+            } else {
+                tableBody.innerHTML = '<tr><td colspan="6" class="text-center">Error loading complaints</td></tr>';
+            }
+        });
+}
+
+// Helper function to get status badge class
+function getStatusBadgeClass(status) {
+    switch(status) {
+        case 'pending':
+            return 'badge-pending';
+        case 'in-progress':
+            return 'badge-warning';
+        case 'resolved':
+            return 'badge-resolved';
+        case 'escalated':
+            return 'badge-info';
+        default:
+            return 'badge-secondary';
+    }
+}
+
+// Helper function to get status text
+function getStatusText(status) {
+    switch(status) {
+        case 'pending':
+            return 'Pending';
+        case 'in-progress':
+            return 'In Progress';
+        case 'resolved':
+            return 'Resolved';
+        case 'escalated':
+            return 'Escalated';
+        default:
+            return status;
+    }
+}
+
+// Helper function to get complaint type text
+function getComplaintTypeText(type) {
+    const typeMap = {
+        'hostel': 'Hostel/Mess',
+        'academic': 'Academic',
+        'exam': 'Exam Related',
+        'disciplinary': 'Disciplinary',
+        'other': 'Other'
+    };
+    return typeMap[type] || type;
 }
 
 // Setup event listeners
 function setupEventListeners() {
+    console.log('Setting up event listeners...');
+    
     // Navigation links (dropdown menu only now)
-    document.getElementById('dashboardSystemLink').addEventListener('click', (e) => {
+    const dashboardLink = document.getElementById('dashboardSystemLink');
+    if (dashboardLink) {
+        dashboardLink.addEventListener('click', (e) => {
         e.preventDefault();
+            console.log('Dashboard link clicked');
+            closeDropdown();
         showView('dashboardView');
     });
+    } else {
+        console.error('Dashboard link not found');
+    }
     
-    document.getElementById('newComplaintSystemLink').addEventListener('click', (e) => {
-        e.preventDefault();
-        showView('newComplaintView');
-    });
+    const newComplaintLink = document.getElementById('newComplaintSystemLink');
+    if (newComplaintLink) {
+        newComplaintLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            console.log('New Complaint link clicked');
+            closeDropdown();
+            
+            // Ensure all other views are hidden first
+            const allViews = ['dashboardView', 'myComplaintsView', 'profileView', 'settingsView'];
+            allViews.forEach(viewId => {
+                const view = document.getElementById(viewId);
+                if (view) {
+                    view.style.display = 'none';
+                }
+            });
+            
+            // Show the new complaint view
+            const newComplaintView = document.getElementById('newComplaintView');
+            if (newComplaintView) {
+                newComplaintView.style.display = 'block';
+                console.log('New Complaint view displayed');
+                
+                // Scroll to top
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                
+                // Focus on first input field
+                setTimeout(() => {
+                    const houseNameInput = document.getElementById('houseName');
+                    if (houseNameInput) {
+                        houseNameInput.focus();
+                    }
+                }, 100);
+            } else {
+                console.error('New Complaint view element not found!');
+                alert('Error: Complaint form not found. Please refresh the page.');
+            }
+        });
+    } else {
+        console.error('New Complaint link not found');
+    }
     
-    document.getElementById('myComplaintsSystemLink').addEventListener('click', (e) => {
+    const myComplaintsLink = document.getElementById('myComplaintsSystemLink');
+    if (myComplaintsLink) {
+        myComplaintsLink.addEventListener('click', (e) => {
         e.preventDefault();
+            console.log('My Complaints link clicked');
+            closeDropdown();
         showView('myComplaintsView');
         loadMyComplaints();
     });
+    } else {
+        console.error('My Complaints link not found');
+    }
     
-    document.getElementById('profileSystemLink').addEventListener('click', (e) => {
+    const profileLink = document.getElementById('profileSystemLink');
+    if (profileLink) {
+        profileLink.addEventListener('click', (e) => {
         e.preventDefault();
+            console.log('Profile link clicked');
+            closeDropdown();
         showView('profileView');
     });
+    } else {
+        console.error('Profile link not found');
+    }
     
-    document.getElementById('settingsSystemLink').addEventListener('click', (e) => {
+    const settingsLink = document.getElementById('settingsSystemLink');
+    if (settingsLink) {
+        settingsLink.addEventListener('click', (e) => {
         e.preventDefault();
+            console.log('Settings link clicked');
+            closeDropdown();
         showView('settingsView');
     });
+    } else {
+        console.error('Settings link not found');
+    }
     
     // Complaint form submission
     const complaintForm = document.getElementById('complaintForm');
@@ -119,108 +399,353 @@ function setupEventListeners() {
             changePassword();
         });
     }
+    
+    // Lodge Complaint button event listener
+    const lodgeComplaintBtn = document.getElementById('lodgeComplaintBtn');
+    if (lodgeComplaintBtn) {
+        lodgeComplaintBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            console.log('Lodge Complaint button clicked');
+            showComplaintForm();
+        });
+    } else {
+        console.warn('Lodge Complaint button not found');
+    }
+}
+
+// Close Bootstrap dropdown
+function closeDropdown() {
+    // Close the dropdown menu after clicking
+    try {
+        const dropdownToggle = document.getElementById('navbarDropdown');
+        if (dropdownToggle) {
+            const dropdownInstance = bootstrap.Dropdown.getInstance(dropdownToggle);
+            if (dropdownInstance) {
+                dropdownInstance.hide();
+            } else {
+                // If instance doesn't exist, manually remove show class
+                const dropdownMenu = document.querySelector('.dropdown-menu.show');
+                if (dropdownMenu) {
+                    dropdownMenu.classList.remove('show');
+                    dropdownToggle.setAttribute('aria-expanded', 'false');
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Error closing dropdown:', error);
+    }
 }
 
 // Show specific view
 function showView(viewId) {
+    console.log('Showing view:', viewId);
+    
+    // List of all view IDs
+    const viewIds = ['dashboardView', 'newComplaintView', 'myComplaintsView', 'profileView', 'settingsView'];
+    
     // Hide all views
-    document.getElementById('dashboardView').style.display = 'none';
-    document.getElementById('newComplaintView').style.display = 'none';
-    document.getElementById('myComplaintsView').style.display = 'none';
-    document.getElementById('profileView').style.display = 'none';
-    document.getElementById('settingsView').style.display = 'none';
+    viewIds.forEach(id => {
+        const view = document.getElementById(id);
+        if (view) {
+            view.style.display = 'none';
+            console.log('Hiding view:', id);
+        } else {
+            console.warn('View not found:', id);
+        }
+    });
     
     // Show selected view
-    document.getElementById(viewId).style.display = 'block';
+    const selectedView = document.getElementById(viewId);
+    if (selectedView) {
+        selectedView.style.display = 'block';
+        console.log('View shown successfully:', viewId);
+        
+        // Scroll to top of the view
+        selectedView.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else {
+        console.error('Selected view not found:', viewId);
+        // Fallback: show dashboard if view not found
+        const dashboardView = document.getElementById('dashboardView');
+        if (dashboardView) {
+            dashboardView.style.display = 'block';
+            console.log('Fallback: Showing dashboard view');
+        }
+    }
 }
 
 // Load my complaints
 function loadMyComplaints() {
-    // In a real implementation, this would fetch from a database
-    // For now, we'll simulate with sample data
     const tableBody = document.getElementById('myComplaintsTable');
-    tableBody.innerHTML = `
-        <tr>
-            <td>CMPL-001</td>
-            <td>Hostel/Mess</td>
-            <td>No hot water in hostel</td>
-            <td><span class="status-badge badge-resolved">Resolved</span></td>
-            <td>2025-10-25</td>
-            <td>
-                <button class="btn btn-sm btn-primary btn-action">View</button>
+    
+    if (!db || !currentUser) {
+        tableBody.innerHTML = '<tr><td colspan="6" class="text-center">No complaints found</td></tr>';
+        return;
+    }
+    
+    // Show loading state
+    tableBody.innerHTML = '<tr><td colspan="6" class="text-center">Loading complaints...</td></tr>';
+    
+    // Fetch all complaints for current student
+    db.collection('complaints')
+        .where('enrollmentNumber', '==', currentUser.enrollmentNumber)
+        .orderBy('createdAt', 'desc')
+        .get()
+        .then((querySnapshot) => {
+            if (querySnapshot.empty) {
+                tableBody.innerHTML = '<tr><td colspan="6" class="text-center">No complaints found</td></tr>';
+                return;
+            }
+            
+            let html = '';
+            querySnapshot.forEach((doc) => {
+                const data = doc.data();
+                const complaintId = doc.id;
+                // Handle Firestore timestamp
+                let date = 'N/A';
+                if (data.createdAt) {
+                    if (data.createdAt.toDate) {
+                        date = data.createdAt.toDate().toLocaleDateString();
+                    } else if (data.createdAt.seconds) {
+                        date = new Date(data.createdAt.seconds * 1000).toLocaleDateString();
+                    }
+                }
+                const statusClass = getStatusBadgeClass(data.status);
+                const statusText = getStatusText(data.status);
+                const typeText = getComplaintTypeText(data.complaintType);
+                const description = (data.complaintDescription || '').length > 50 
+                    ? data.complaintDescription.substring(0, 50) + '...' 
+                    : data.complaintDescription;
+                
+                html += `
+                    <tr>
+                        <td>${complaintId}</td>
+                        <td>${typeText}</td>
+                        <td>${description}</td>
+                        <td><span class="status-badge ${statusClass}">${statusText}</span></td>
+                        <td>${date}</td>
+                        <td>
+                            <button class="btn btn-sm btn-primary btn-action" onclick="viewComplaint('${complaintId}')">View</button>
             </td>
         </tr>
-        <tr>
-            <td>CMPL-002</td>
-            <td>Exam Related</td>
-            <td>Exam schedule conflict</td>
-            <td><span class="status-badge badge-resolved">Resolved</span></td>
-            <td>2025-10-26</td>
-            <td>
-                <button class="btn btn-sm btn-primary btn-action">View</button>
-            </td>
-        </tr>
-        <tr>
-            <td>CMPL-003</td>
-            <td>Academic</td>
-            <td>Issue with course material</td>
-            <td><span class="status-badge badge-pending">Pending</span></td>
-            <td>2025-10-28</td>
-            <td>
-                <button class="btn btn-sm btn-primary btn-action">View</button>
-            </td>
-        </tr>
-        <tr>
-            <td>CMPL-004</td>
-            <td>Disciplinary</td>
-            <td>Library noise complaint</td>
-            <td><span class="status-badge badge-resolved">Resolved</span></td>
-            <td>2025-10-29</td>
-            <td>
-                <button class="btn btn-sm btn-primary btn-action">View</button>
-            </td>
-        </tr>
-        <tr>
-            <td>CMPL-005</td>
-            <td>Other</td>
-            <td>Wi-Fi connectivity issue</td>
-            <td><span class="status-badge badge-resolved">Resolved</span></td>
-            <td>2025-10-30</td>
-            <td>
-                <button class="btn btn-sm btn-primary btn-action">View</button>
+                `;
+            });
+            
+            tableBody.innerHTML = html;
+        })
+        .catch((error) => {
+            console.error('Error loading complaints:', error);
+            // If orderBy fails, try without ordering (for when index is not created)
+            if (error.code === 'failed-precondition') {
+                db.collection('complaints')
+                    .where('enrollmentNumber', '==', currentUser.enrollmentNumber)
+                    .get()
+                    .then((querySnapshot) => {
+                        if (querySnapshot.empty) {
+                            tableBody.innerHTML = '<tr><td colspan="6" class="text-center">No complaints found</td></tr>';
+                            return;
+                        }
+                        // Sort in memory
+                        const complaints = [];
+                        querySnapshot.forEach((doc) => {
+                            complaints.push({ id: doc.id, data: doc.data() });
+                        });
+                        complaints.sort((a, b) => {
+                            const aTime = a.data.createdAt?.toDate ? a.data.createdAt.toDate().getTime() : 0;
+                            const bTime = b.data.createdAt?.toDate ? b.data.createdAt.toDate().getTime() : 0;
+                            return bTime - aTime;
+                        });
+                        
+                        let html = '';
+                        complaints.forEach(({ id, data }) => {
+                            let date = 'N/A';
+                            if (data.createdAt) {
+                                if (data.createdAt.toDate) {
+                                    date = data.createdAt.toDate().toLocaleDateString();
+                                } else if (data.createdAt.seconds) {
+                                    date = new Date(data.createdAt.seconds * 1000).toLocaleDateString();
+                                }
+                            }
+                            const statusClass = getStatusBadgeClass(data.status);
+                            const statusText = getStatusText(data.status);
+                            const typeText = getComplaintTypeText(data.complaintType);
+                            const description = (data.complaintDescription || '').length > 50 
+                                ? data.complaintDescription.substring(0, 50) + '...' 
+                                : data.complaintDescription;
+                            
+                            html += `
+                                <tr>
+                                    <td>${id}</td>
+                                    <td>${typeText}</td>
+                                    <td>${description}</td>
+                                    <td><span class="status-badge ${statusClass}">${statusText}</span></td>
+                                    <td>${date}</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-primary btn-action" onclick="viewComplaint('${id}')">View</button>
             </td>
         </tr>
     `;
+                        });
+                        tableBody.innerHTML = html;
+                    })
+                    .catch((fallbackError) => {
+                        console.error('Fallback error:', fallbackError);
+                        tableBody.innerHTML = '<tr><td colspan="6" class="text-center">Error loading complaints</td></tr>';
+                    });
+            } else {
+                tableBody.innerHTML = '<tr><td colspan="6" class="text-center">Error loading complaints</td></tr>';
+            }
+        });
 }
+
+// View complaint details (placeholder function - can be enhanced with modal)
+function viewComplaint(complaintId) {
+    if (!db) {
+        alert('Complaint details not available');
+        return;
+    }
+    
+    db.collection('complaints').doc(complaintId).get()
+        .then((doc) => {
+            if (doc.exists) {
+                const data = doc.data();
+                // Handle Firestore timestamp
+                let date = 'N/A';
+                if (data.createdAt) {
+                    if (data.createdAt.toDate) {
+                        date = data.createdAt.toDate().toLocaleDateString();
+                    } else if (data.createdAt.seconds) {
+                        date = new Date(data.createdAt.seconds * 1000).toLocaleDateString();
+                    }
+                }
+                const details = `
+Complaint ID: ${complaintId}
+Type: ${getComplaintTypeText(data.complaintType)}
+Status: ${getStatusText(data.status)}
+Date: ${date}
+Description: ${data.complaintDescription || 'N/A'}
+House Name: ${data.houseName || 'N/A'}
+Room Number: ${data.roomNumber || 'N/A'}
+Assigned To: ${data.assignedTo || 'Pending'}
+                `;
+                alert(details);
+            } else {
+                alert('Complaint not found');
+            }
+        })
+        .catch((error) => {
+            console.error('Error fetching complaint:', error);
+            alert('Error loading complaint details');
+        });
+}
+
+// Make viewComplaint available globally
+window.viewComplaint = viewComplaint;
 
 // Submit complaint
 function submitComplaint() {
-    const complaintData = {
+    console.log('submitComplaint called');
+    
+    // Try to initialize Firestore if not already initialized
+    if (!db) {
+        if (!initializeFirestore()) {
+            alert('Error: Database not available. Please refresh the page and check your Firebase configuration.');
+            return;
+        }
+    }
+    
+    if (!currentUser) {
+        alert('Error: User not logged in. Please log in again.');
+        window.location.href = 'student-login.html';
+        return;
+    }
+    
+    const houseName = document.getElementById('houseName').value.trim();
+    const roomNumber = document.getElementById('roomNumber').value.trim();
+    const complaintType = document.getElementById('complaintType').value;
+    const complaintDescription = document.getElementById('complaintDescription').value.trim();
+    
+    // Validate required fields
+    if (!complaintType || !complaintDescription) {
+        alert('Please fill in all required fields (Complaint Type and Description are required)');
+        return;
+    }
+    
+    if (!houseName || !roomNumber) {
+        alert('Please fill in House Name and Room Number');
+        return;
+    }
+    
+    // Show loading state
+    const submitBtn = document.querySelector('#complaintForm button[type="submit"]');
+    const originalBtnText = submitBtn.textContent;
+    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Submitting...';
+    submitBtn.disabled = true;
+    
+    // Prepare complaint data
+    const complaintDataToSave = {
         studentId: currentUser.id,
-        studentName: currentUser.name,
+        studentName: currentUser.name || 'Student',
         enrollmentNumber: currentUser.enrollmentNumber,
-        houseName: document.getElementById('houseName').value,
-        roomNumber: document.getElementById('roomNumber').value,
-        complaintType: document.getElementById('complaintType').value,
-        complaintDescription: document.getElementById('complaintDescription').value,
+        houseName: houseName,
+        roomNumber: roomNumber,
+        complaintType: complaintType,
+        complaintDescription: complaintDescription,
         status: 'pending',
-        createdAt: new Date().toISOString(),
-        assignedTo: getInitialAuthority(document.getElementById('complaintType').value)
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        assignedTo: getInitialAuthority(complaintType),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
     
-    // In a real implementation, this would save to a database
-    // For now, we'll just show a success message
-    alert('Complaint submitted successfully! Complaint ID: CMPL-' + Math.floor(Math.random() * 1000 + 1000));
+    console.log('Submitting complaint:', complaintDataToSave);
     
-    // Reset form
-    document.getElementById('complaintForm').reset();
-    
-    // Switch to dashboard view
-    showView('dashboardView');
-    
-    // Refresh dashboard stats
-    loadDashboardStats();
-    loadRecentComplaints();
+    // Save to Firestore
+    db.collection('complaints').add(complaintDataToSave)
+        .then((docRef) => {
+            const complaintId = docRef.id;
+            console.log('Complaint saved successfully with ID:', complaintId);
+            
+            alert(`Complaint submitted successfully!\n\nComplaint ID: ${complaintId}\n\nYour complaint has been saved and will be reviewed by the assigned authority.`);
+            
+            // Reset form
+            document.getElementById('complaintForm').reset();
+            
+            // Re-populate student name and enrollment (they are readonly fields)
+            if (currentUser.name) {
+                document.getElementById('studentName').value = currentUser.name;
+            }
+            if (currentUser.enrollmentNumber) {
+                document.getElementById('enrollmentNumber').value = currentUser.enrollmentNumber;
+            }
+            
+            // Switch to dashboard view
+            showView('dashboardView');
+            
+            // Refresh dashboard stats and recent complaints
+            loadDashboardStats();
+            loadRecentComplaints();
+            
+            // Reset button
+            submitBtn.textContent = originalBtnText;
+            submitBtn.disabled = false;
+        })
+        .catch((error) => {
+            console.error('Error submitting complaint:', error);
+            let errorMessage = 'Error submitting complaint. ';
+            
+            if (error.code === 'permission-denied') {
+                errorMessage += 'You do not have permission to create complaints. Please check your Firebase security rules.';
+            } else if (error.code === 'unavailable') {
+                errorMessage += 'Firebase service is unavailable. Please check your internet connection.';
+            } else {
+                errorMessage += error.message || 'Please try again.';
+            }
+            
+            alert(errorMessage);
+            
+            // Reset button
+            submitBtn.textContent = originalBtnText;
+            submitBtn.disabled = false;
+        });
 }
 
 // Determine initial authority based on complaint type
@@ -751,28 +1276,54 @@ function processUserMessageFallback(message) {
 
 // Submit complaint from chatbot data
 function submitComplaintFromChatbot() {
-    // In a real implementation, this would save to a database
-    // For now, we'll just show a success message
-    const complaintId = 'CMPL-' + Math.floor(Math.random() * 1000 + 1000);
+    if (!db || !currentUser) {
+        addBotMessage('Sorry, there was an error submitting your complaint. Please try using the complaint form instead.');
+        return;
+    }
     
-    // Prepare complaint details based on accommodation type
+    // Prepare complaint data from chatbot
+    const complaintDataToSave = {
+        studentId: currentUser.id,
+        studentName: complaintData.name || currentUser.name || 'Student',
+        enrollmentNumber: complaintData.enrollmentNumber || currentUser.enrollmentNumber,
+        houseName: complaintData.houseName || currentUser.houseName || '',
+        roomNumber: complaintData.roomNumber || currentUser.roomNumber || '',
+        complaintType: complaintData.complaintType || 'other',
+        complaintDescription: complaintData.complaintDescription || '',
+        status: 'pending',
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        assignedTo: getInitialAuthority(complaintData.complaintType || 'other'),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        submittedVia: 'chatbot'
+    };
+    
+    // Validate required fields
+    if (!complaintDataToSave.complaintDescription) {
+        addBotMessage('Please provide a description of your complaint.');
+        return;
+    }
+    
+    // Save to Firestore
+    db.collection('complaints').add(complaintDataToSave)
+        .then((docRef) => {
+            const complaintId = docRef.id;
+            
+            // Prepare complaint details for display
     let complaintDetails = `Complaint ID: ${complaintId}\n`;
-    complaintDetails += `Name: ${complaintData.name}\n`;
-    complaintDetails += `Enrollment Number: ${complaintData.enrollmentNumber}\n`;
+            complaintDetails += `Name: ${complaintDataToSave.studentName}\n`;
+            complaintDetails += `Enrollment Number: ${complaintDataToSave.enrollmentNumber}\n`;
     
     if (complaintData.accommodationType === 'hosteller') {
         complaintDetails += `Accommodation: Hosteller\n`;
-        complaintDetails += `House Name: ${complaintData.houseName}\n`;
-        complaintDetails += `Room Number: ${complaintData.roomNumber}\n`;
-    } else {
+                complaintDetails += `House Name: ${complaintDataToSave.houseName}\n`;
+                complaintDetails += `Room Number: ${complaintDataToSave.roomNumber}\n`;
+            } else if (complaintData.accommodationType === 'dayScholar') {
         complaintDetails += `Accommodation: Day Scholar\n`;
-        complaintDetails += `Address: ${complaintData.address}\n`;
-    }
-    
-    complaintDetails += `Complaint Type: ${complaintData.complaintType}\n`;
-    complaintDetails += `Description: ${complaintData.complaintDescription}`;
-    
-    alert(`Complaint submitted successfully through chatbot!\n\n${complaintDetails}`);
+                complaintDetails += `Address: ${complaintData.address || 'N/A'}\n`;
+            }
+            
+            complaintDetails += `Complaint Type: ${getComplaintTypeText(complaintDataToSave.complaintType)}\n`;
+            complaintDetails += `Description: ${complaintDataToSave.complaintDescription}`;
     
     addBotMessage(`Great! Your complaint has been submitted successfully with ID: ${complaintId}. We are working on it and the system will be updated recently. You can check the status of your complaint in the 'My Complaints' section of your dashboard.`);
     
@@ -784,4 +1335,78 @@ function submitComplaintFromChatbot() {
     // Refresh dashboard stats
     loadDashboardStats();
     loadRecentComplaints();
+        })
+        .catch((error) => {
+            console.error('Error submitting complaint from chatbot:', error);
+            addBotMessage('Sorry, there was an error submitting your complaint. Please try again or use the complaint form.');
+        });
 }
+
+// Show complaint form function - called by the "Lodge a Complaint" button
+function showComplaintForm() {
+    console.log('showComplaintForm called');
+    
+    try {
+        // Hide all views
+        const allViews = ['dashboardView', 'myComplaintsView', 'profileView', 'settingsView'];
+        allViews.forEach(viewId => {
+            const view = document.getElementById(viewId);
+            if (view) {
+                view.style.display = 'none';
+                console.log('Hiding view:', viewId);
+            } else {
+                console.warn('View not found:', viewId);
+            }
+        });
+        
+        // Show the new complaint view
+        const newComplaintView = document.getElementById('newComplaintView');
+        if (newComplaintView) {
+            newComplaintView.style.display = 'block';
+            console.log('Complaint form displayed successfully');
+            
+            // Scroll to top
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            
+            // Ensure student name and enrollment are filled
+            if (currentUser) {
+                if (currentUser.name) {
+                    const studentNameInput = document.getElementById('studentName');
+                    if (studentNameInput) {
+                        studentNameInput.value = currentUser.name;
+                        console.log('Student name filled:', currentUser.name);
+                    }
+                }
+                if (currentUser.enrollmentNumber) {
+                    const enrollmentInput = document.getElementById('enrollmentNumber');
+                    if (enrollmentInput) {
+                        enrollmentInput.value = currentUser.enrollmentNumber;
+                        console.log('Enrollment number filled:', currentUser.enrollmentNumber);
+                    }
+                }
+            } else {
+                console.warn('currentUser is not set');
+            }
+            
+            // Focus on first input field after a short delay
+            setTimeout(() => {
+                const houseNameInput = document.getElementById('houseName');
+                if (houseNameInput) {
+                    houseNameInput.focus();
+                    console.log('Focused on houseName input');
+                } else {
+                    console.warn('houseName input not found');
+                }
+            }, 100);
+        } else {
+            console.error('New Complaint view element not found!');
+            alert('Error: Complaint form not found. Please refresh the page.');
+        }
+    } catch (error) {
+        console.error('Error in showComplaintForm:', error);
+        alert('An error occurred while opening the complaint form. Please check the console for details.');
+    }
+}
+
+// Make showComplaintForm available globally
+window.showComplaintForm = showComplaintForm;

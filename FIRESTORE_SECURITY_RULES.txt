@@ -1,0 +1,102 @@
+Firestore Security Rules for College Complaint Management System
+================================================================
+
+Copy and paste these rules into your Firebase Console:
+Firebase Console > Firestore Database > Rules tab
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to extract enrollment number from email
+    function getEnrollmentFromEmail(email) {
+      // Email format: enrollmentNumber@student.college.edu
+      return email.split('@')[0];
+    }
+    
+    // Complaints collection rules
+    match /complaints/{complaintId} {
+      // Allow authenticated users to create complaints
+      // They must provide their enrollmentNumber in the complaint
+      allow create: if request.auth != null 
+                    && request.resource.data.keys().hasAll(['enrollmentNumber', 'complaintType', 'complaintDescription', 'status'])
+                    && request.resource.data.status == 'pending'
+                    && request.resource.data.enrollmentNumber is string
+                    && request.resource.data.enrollmentNumber.size() > 0;
+      
+      // Allow students to read their own complaints
+      // Extract enrollment number from their email and match it
+      allow read: if request.auth != null 
+                  && (resource.data.enrollmentNumber == getEnrollmentFromEmail(request.auth.token.email)
+                      || request.auth.token.email.matches('.*@student.college.edu'));
+      
+      // Allow students to update their own complaints (only if status is still pending)
+      allow update: if request.auth != null 
+                    && resource.data.enrollmentNumber == getEnrollmentFromEmail(request.auth.token.email)
+                    && resource.data.status == 'pending'
+                    && request.resource.data.status == 'pending';
+      
+      // Allow admins to read and update all complaints
+      // Admins don't have @student.college.edu email
+      allow read, update: if request.auth != null 
+                          && !request.auth.token.email.matches('.*@student.college.edu');
+    }
+    
+    // Students collection (optional - for storing student profile data)
+    match /students/{studentId} {
+      // Allow students to read their own document
+      allow read: if request.auth != null 
+                  && (studentId == getEnrollmentFromEmail(request.auth.token.email)
+                      || request.auth.token.email.matches('.*@student.college.edu'));
+      
+      // Allow admins to read all student documents
+      allow read: if request.auth != null 
+                  && !request.auth.token.email.matches('.*@student.college.edu');
+      
+      // Only admins can write to student documents
+      allow write: if request.auth != null 
+                   && !request.auth.token.email.matches('.*@student.college.edu');
+    }
+    
+    // Admins collection (for admin data)
+    match /admins/{adminEmail} {
+      // Only authenticated admins can read
+      allow read: if request.auth != null 
+                  && !request.auth.token.email.matches('.*@student.college.edu');
+      
+      // Only admins can write
+      allow write: if request.auth != null 
+                   && !request.auth.token.email.matches('.*@student.college.edu');
+    }
+  }
+}
+
+IMPORTANT NOTES:
+================
+1. These rules allow any authenticated student to create a complaint
+2. Students can only read complaints where enrollmentNumber matches their email prefix
+3. Students can only update their own pending complaints
+4. Admins (non-student emails) can read and update all complaints
+5. Make sure to test these rules in the Firebase Console Rules Playground
+
+ALTERNATIVE SIMPLER RULES (for testing):
+=========================================
+If you want to test quickly, you can temporarily use these simpler rules:
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /complaints/{complaintId} {
+      // Allow any authenticated user to create and read complaints
+      allow create, read: if request.auth != null;
+      
+      // Allow updates only if status is pending
+      allow update: if request.auth != null 
+                    && resource.data.status == 'pending';
+    }
+  }
+}
+
+⚠️ WARNING: The simpler rules are less secure and should only be used for testing.
+For production, use the full rules above.
+

@@ -2,6 +2,16 @@
 // This file should be secured and not exposed publicly in production
 
 const CONFIG = {
+    // Firebase Configuration
+    FIREBASE: {
+        apiKey: "AIzaSyDd67PoGZu-JiY3sKQv_iIeyPRPK3LS5Ls",
+        authDomain: "collegecomplaint-3adf9.firebaseapp.com",
+        projectId: "collegecomplaint-3adf9",
+        storageBucket: "collegecomplaint-3adf9.firebasestorage.app",
+        messagingSenderId: "438967541707",
+        appId: "1:438967541707:web:5d0a92c72599c1c673204e"
+    },
+    
     // AI API Configuration
     AI_API: {
         // OpenAI API configuration
