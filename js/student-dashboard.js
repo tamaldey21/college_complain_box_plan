@@ -833,8 +833,13 @@ function initializeChatbot() {
         }
     });
     
-    // Add initial bot message
-    addBotMessage("Hi there! I'm your College Assistant. How can I help you today?");
+    // Add initial bot message with quick actions
+    addBotMessage("Hi there! I'm your College Assistant. I can help you navigate the website and file complaints. What would you like to do?", [
+        { text: "File Complaint", action: () => { showComplaintForm(); addBotMessage("I've opened the complaint form for you! Anything else?"); refocusChatbotInput(); } },
+        { text: "My Complaints", action: () => { showView('myComplaintsView'); loadMyComplaints(); addBotMessage("Showing your complaints! Need anything else?"); refocusChatbotInput(); } },
+        { text: "Dashboard", action: () => { showView('dashboardView'); loadDashboardStats(); loadRecentComplaints(); addBotMessage("Dashboard opened! What else can I help with?"); refocusChatbotInput(); } },
+        { text: "Help", action: () => { showHelpMenu(); } }
+    ]);
     
     console.log('Chatbot initialized successfully');
 }
@@ -852,7 +857,16 @@ function sendMessage() {
         // Process message and generate bot response
         setTimeout(() => {
             processUserMessage(message);
+            // Refocus input after processing so user can continue typing
+            setTimeout(() => {
+                if (chatbotInput) {
+                    chatbotInput.focus();
+                }
+            }, 100);
         }, 500);
+    } else {
+        // If empty, just focus the input
+        chatbotInput.focus();
     }
 }
 
@@ -896,6 +910,8 @@ function addBotMessage(message, buttons = null) {
                 // Process the button action
                 if (button.action) {
                     button.action();
+                    // Refocus input after button action
+                    refocusChatbotInput();
                 }
             };
             buttonContainer.appendChild(btn);
@@ -913,6 +929,7 @@ function addBotMessage(message, buttons = null) {
 
 // Process user message and generate response using AI
 async function processUserMessage(message) {
+    const originalMessage = message;
     message = message.toLowerCase();
     
     // Reset chatbot if user says "reset" or "start over"
@@ -921,6 +938,14 @@ async function processUserMessage(message) {
         complaintData = {};
         chatHistory = [];
         addBotMessage("Okay, let's start over. How can I help you today?");
+        return;
+    }
+    
+    // Check for navigation/action commands FIRST - these should always work regardless of AI
+    // This ensures "file complaint", "dashboard", etc. always work
+    if (isNavigationCommand(message)) {
+        // Process navigation command directly
+        processUserMessageFallback(message);
         return;
     }
     
@@ -933,9 +958,11 @@ async function processUserMessage(message) {
         try {
             // Use AI to generate response
             console.log('Attempting to use AI for response');
-            const aiResponse = await getAIResponse(message);
+            const aiResponse = await getAIResponse(originalMessage);
             if (aiResponse && aiResponse !== "undefined") {
                 addBotMessage(aiResponse);
+                // Refocus input after AI response
+                refocusChatbotInput();
             } else {
                 throw new Error("Received undefined response from AI");
             }
@@ -950,6 +977,25 @@ async function processUserMessage(message) {
         console.log('Using fallback rule-based system');
         processUserMessageFallback(message);
     }
+}
+
+// Check if message is a navigation/action command
+function isNavigationCommand(message) {
+    const navCommands = [
+        'dashboard', 'home', 'main',
+        'my complaints', 'view complaints', 'complaint list', 'show complaints',
+        'file complaint', 'file a complaint', 'lodge complaint', 'lodge a complaint', 
+        'new complaint', 'create complaint', 'file new', 'submit complaint', 'submit a complaint',
+        'i want to file', 'want to file', 'need to file', 'i need to file',
+        'profile', 'my profile',
+        'settings', 'preferences',
+        'statistics', 'stats', 'summary', 'overview',
+        'help', 'commands', 'what can you do', 'menu',
+        'status', 'check', 'check status',
+        'quick', 'options'
+    ];
+    
+    return navCommands.some(cmd => message.includes(cmd));
 }
 
 // Get response from AI API with improved error handling
@@ -1079,7 +1125,102 @@ function processUserMessageFallback(message) {
     
     // Enhanced keyword-based responses for common queries
     if (message.includes('hello') || message.includes('hi') || message.includes('hey')) {
-        addBotMessage("Hello! I'm your College Assistant. I can help you file complaints or answer questions about college services. What would you like to know?");
+        addBotMessage("Hello! I'm your College Assistant. I can help you with:\n• Filing complaints\n• Checking complaint status\n• Navigating the website\n• Viewing your profile\n• Getting help\n\nWhat would you like to do?", [
+            { text: "File Complaint", action: () => { showComplaintForm(); addBotMessage("I've opened the complaint form for you! Please fill in the details."); } },
+            { text: "My Complaints", action: () => { showView('myComplaintsView'); loadMyComplaints(); addBotMessage("Showing your complaints now!"); } },
+            { text: "Dashboard", action: () => { showView('dashboardView'); loadDashboardStats(); loadRecentComplaints(); addBotMessage("Showing your dashboard now!"); } },
+            { text: "Help", action: () => { showHelpMenu(); } }
+        ]);
+        return;
+    }
+    
+    // Navigation commands
+    if (message.includes('dashboard') || message.includes('home') || message.includes('main')) {
+        showView('dashboardView');
+        loadDashboardStats();
+        loadRecentComplaints();
+        addBotMessage("I've opened your dashboard for you! Is there anything else you'd like me to help you with?");
+        refocusChatbotInput();
+        return;
+    }
+    
+    if (message.includes('my complaints') || message.includes('view complaints') || message.includes('complaint list') || message.includes('show complaints')) {
+        showView('myComplaintsView');
+        loadMyComplaints();
+        addBotMessage("Showing all your complaints now! Anything else I can help with?");
+        refocusChatbotInput();
+        return;
+    }
+    
+    // File complaint variations - must be checked before general "complaint" handler
+    if (message.includes('file complaint') || message.includes('file a complaint') || message.includes('lodge complaint') || 
+        message.includes('lodge a complaint') || message.includes('new complaint') || message.includes('create complaint') || 
+        message.includes('file new') || message.includes('submit complaint') || message.includes('submit a complaint') ||
+        message.includes('i want to file') || message.includes('want to file') || message.includes('need to file') ||
+        message.includes('i need to file') || (message.includes('file') && message.includes('complaint'))) {
+        showComplaintForm();
+        addBotMessage("I've opened the complaint form for you! Please fill in all the details and submit. Need help with anything else?");
+        refocusChatbotInput();
+        return;
+    }
+    
+    if (message.includes('profile') || message.includes('my profile')) {
+        showView('profileView');
+        addBotMessage("Showing your profile now! What else can I help you with?");
+        refocusChatbotInput();
+        return;
+    }
+    
+    if (message.includes('settings') || message.includes('preferences')) {
+        showView('settingsView');
+        addBotMessage("Showing your settings now! Anything else?");
+        refocusChatbotInput();
+        return;
+    }
+    
+    // Show complaint statistics
+    if (message.includes('statistics') || message.includes('stats') || message.includes('summary') || message.includes('overview')) {
+        if (db && currentUser) {
+            db.collection('complaints')
+                .where('enrollmentNumber', '==', currentUser.enrollmentNumber)
+                .get()
+                .then((querySnapshot) => {
+                    let total = 0;
+                    let pending = 0;
+                    let resolved = 0;
+                    let escalated = 0;
+                    
+                    querySnapshot.forEach((doc) => {
+                        const data = doc.data();
+                        total++;
+                        if (data.status === 'pending' || data.status === 'in-progress') {
+                            pending++;
+                        } else if (data.status === 'resolved') {
+                            resolved++;
+                        } else if (data.status === 'escalated') {
+                            escalated++;
+                        }
+                    });
+                    
+                    addBotMessage(`Here's your complaint summary:\n\n📊 Total Complaints: ${total}\n⏳ Pending: ${pending}\n✅ Resolved: ${resolved}\n⬆️ Escalated: ${escalated}\n\nWould you like to view your complaints?`, [
+                        { text: "View My Complaints", action: () => { showView('myComplaintsView'); loadMyComplaints(); refocusChatbotInput(); } },
+                        { text: "File New Complaint", action: () => { showComplaintForm(); refocusChatbotInput(); } }
+                    ]);
+                    refocusChatbotInput();
+                })
+                .catch((error) => {
+                    console.error('Error loading stats:', error);
+                    addBotMessage("I couldn't fetch your statistics right now. Please try again later.");
+                });
+        } else {
+            addBotMessage("I need to load your data first. Please wait a moment and try again.");
+        }
+        return;
+    }
+    
+    // Help menu
+    if (message.includes('help') || message.includes('commands') || message.includes('what can you do') || message.includes('menu')) {
+        showHelpMenu();
         return;
     }
     
@@ -1088,7 +1229,35 @@ function processUserMessageFallback(message) {
         return;
     }
     
-    if (message.includes('complaint') || message.includes('issue') || message.includes('problem')) {
+    // Quick actions
+    if (message.includes('quick') || message.includes('options') || message.includes('menu')) {
+        addBotMessage("Here are some quick actions I can help you with:", [
+            { text: "📋 File Complaint", action: () => { showComplaintForm(); addBotMessage("Complaint form opened!"); } },
+            { text: "📊 My Complaints", action: () => { showView('myComplaintsView'); loadMyComplaints(); addBotMessage("Showing your complaints!"); } },
+            { text: "🏠 Dashboard", action: () => { showView('dashboardView'); loadDashboardStats(); loadRecentComplaints(); addBotMessage("Dashboard opened!"); } },
+            { text: "📈 Statistics", action: () => { 
+                if (db && currentUser) {
+                    db.collection('complaints').where('enrollmentNumber', '==', currentUser.enrollmentNumber).get()
+                        .then((snapshot) => {
+                            const stats = { total: 0, pending: 0, resolved: 0, escalated: 0 };
+                            snapshot.forEach(doc => {
+                                const data = doc.data();
+                                stats.total++;
+                                if (data.status === 'pending' || data.status === 'in-progress') stats.pending++;
+                                else if (data.status === 'resolved') stats.resolved++;
+                                else if (data.status === 'escalated') stats.escalated++;
+                            });
+                            addBotMessage(`Your Statistics:\nTotal: ${stats.total}\nPending: ${stats.pending}\nResolved: ${stats.resolved}\nEscalated: ${stats.escalated}`);
+                        });
+                }
+            } }
+        ]);
+        return;
+    }
+    
+    // General complaint/issue/problem - only if not already handled
+    if ((message.includes('complaint') || message.includes('issue') || message.includes('problem')) && 
+        !message.includes('file complaint') && !message.includes('my complaints') && !message.includes('view complaints')) {
         addBotMessage("I can help you file a complaint. What type of complaint do you have?", [
             { text: "Hostel/Mess", action: () => { complaintData.complaintType = 'hostel'; chatbotState = 6; addBotMessage("Please describe your complaint in detail."); } },
             { text: "Academic", action: () => { complaintData.complaintType = 'academic'; chatbotState = 6; addBotMessage("Please describe your complaint in detail."); } },
@@ -1099,17 +1268,22 @@ function processUserMessageFallback(message) {
         return;
     }
     
-    if (message.includes('status') || message.includes('check')) {
-        addBotMessage("You can check the status of your complaints by navigating to the 'My Complaints' section in your dashboard.");
+    if (message.includes('status') || message.includes('check') || message.includes('check status')) {
+        addBotMessage("I'll show you your complaint status now!", [
+            { text: "View My Complaints", action: () => { showView('myComplaintsView'); loadMyComplaints(); addBotMessage("Here are all your complaints with their current status! Anything else?"); refocusChatbotInput(); } },
+            { text: "View Dashboard", action: () => { showView('dashboardView'); loadDashboardStats(); loadRecentComplaints(); addBotMessage("Here's your dashboard with complaint statistics! Need anything else?"); refocusChatbotInput(); } }
+        ]);
         return;
     }
     
-    if (message.includes('contact') || message.includes('help')) {
-        addBotMessage("You can reach out to the college administration through the following contacts:\n- Academic Issues: academic@college.edu\n- Hostel Issues: hostel@college.edu\n- General Enquiries: info@college.edu");
+    if (message.includes('contact') || message.includes('email') || message.includes('reach out')) {
+        addBotMessage("You can reach out to the college administration through the following contacts:\n- Academic Issues: academic@college.edu\n- Hostel Issues: hostel@college.edu\n- General Enquiries: info@college.edu\n\nAnything else I can help with?");
+        refocusChatbotInput();
         return;
     }
     
-    if (message.includes('file') || message.includes('submit')) {
+    // Generic "file" or "submit" - only if not already handled above
+    if ((message.includes('file') || message.includes('submit')) && !message.includes('complaint')) {
         addBotMessage("I can help you file a complaint. What type of complaint do you have?", [
             { text: "Hostel/Mess", action: () => { complaintData.complaintType = 'hostel'; chatbotState = 6; addBotMessage("Please describe your complaint in detail."); } },
             { text: "Academic", action: () => { complaintData.complaintType = 'academic'; chatbotState = 6; addBotMessage("Please describe your complaint in detail."); } },
@@ -1122,6 +1296,7 @@ function processUserMessageFallback(message) {
     
     if (message.includes('thank')) {
         addBotMessage("You're welcome! Is there anything else I can help you with?");
+        refocusChatbotInput();
         return;
     }
     
@@ -1269,9 +1444,57 @@ function processUserMessageFallback(message) {
             break;
             
         default:
-            addBotMessage("I can help you with filing complaints or answering questions about college services. What would you like to know?\n\nYou can ask me about:\n• Filing complaints\n• Checking complaint status\n• College contacts\n• Academic issues\n• Hostel facilities");
+            addBotMessage("I can help you with various tasks around the website. Here's what I can do:", [
+                { text: "📋 File Complaint", action: () => { showComplaintForm(); addBotMessage("Complaint form opened!"); } },
+                { text: "📊 My Complaints", action: () => { showView('myComplaintsView'); loadMyComplaints(); addBotMessage("Showing your complaints!"); } },
+                { text: "🏠 Dashboard", action: () => { showView('dashboardView'); loadDashboardStats(); loadRecentComplaints(); addBotMessage("Dashboard opened!"); } },
+                { text: "❓ Help", action: () => { showHelpMenu(); } }
+            ]);
             chatbotState = 0;
     }
+}
+
+// Show help menu with all available commands
+function showHelpMenu() {
+    addBotMessage("Here are all the things I can help you with:\n\n📋 **Navigation**\n• 'Dashboard' or 'Home' - Go to dashboard\n• 'My Complaints' - View all your complaints\n• 'New Complaint' - File a new complaint\n• 'Profile' - View your profile\n• 'Settings' - Access settings\n\n📊 **Information**\n• 'Statistics' or 'Stats' - View complaint summary\n• 'Status' or 'Check Status' - Check complaint status\n• 'Help' or 'Menu' - Show this menu\n\n💬 **Complaints**\n• 'File Complaint' - Start filing a complaint\n• 'Complaint' - Get help with complaints\n\nWhat would you like to do?", [
+        { text: "File Complaint", action: () => { showComplaintForm(); addBotMessage("Complaint form opened! Anything else?"); refocusChatbotInput(); } },
+        { text: "My Complaints", action: () => { showView('myComplaintsView'); loadMyComplaints(); addBotMessage("Showing your complaints! Need anything else?"); refocusChatbotInput(); } },
+        { text: "Dashboard", action: () => { showView('dashboardView'); loadDashboardStats(); loadRecentComplaints(); addBotMessage("Dashboard opened! What else can I help with?"); refocusChatbotInput(); } },
+        { text: "Statistics", action: () => {
+            if (db && currentUser) {
+                db.collection('complaints').where('enrollmentNumber', '==', currentUser.enrollmentNumber).get()
+                    .then((snapshot) => {
+                        const stats = { total: 0, pending: 0, resolved: 0, escalated: 0 };
+                        snapshot.forEach(doc => {
+                            const data = doc.data();
+                            stats.total++;
+                            if (data.status === 'pending' || data.status === 'in-progress') stats.pending++;
+                            else if (data.status === 'resolved') stats.resolved++;
+                            else if (data.status === 'escalated') stats.escalated++;
+                        });
+                        addBotMessage(`📊 Your Complaint Statistics:\n\nTotal Complaints: ${stats.total}\n⏳ Pending: ${stats.pending}\n✅ Resolved: ${stats.resolved}\n⬆️ Escalated: ${stats.escalated}\n\nAnything else I can help with?`);
+                        refocusChatbotInput();
+                    });
+            }
+        } }
+    ]);
+    refocusChatbotInput();
+}
+
+// Helper function to refocus chatbot input after actions
+function refocusChatbotInput() {
+    setTimeout(() => {
+        const chatbotInput = document.getElementById('chatbotInput');
+        const chatbotWidget = document.getElementById('chatbotWidget');
+        if (chatbotInput && chatbotWidget) {
+            // Ensure chatbot widget is visible
+            if (chatbotWidget.style.display === 'none') {
+                chatbotWidget.style.display = 'flex';
+            }
+            // Focus the input
+            chatbotInput.focus();
+        }
+    }, 200);
 }
 
 // Submit complaint from chatbot data
